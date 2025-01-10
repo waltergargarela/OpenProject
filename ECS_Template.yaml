@@ -1,0 +1,248 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: CloudFormation template to deploy OpenProject using ECS Fargate and ALB
+
+Parameters:
+  VPCStackName:
+    Description: Name of VPC CF Stack
+    Type: String
+    Default: OPENPROJECT-VPC
+    
+  MemcachedStackName:
+    Description: Name of Memchached Stack
+    Type: String
+    Default: OPENPROJECT-MEMCACHED
+     
+  RDSStackName:
+    Description: Name of RDS Stack
+    Type: String
+    Default: OPENPROJECT-RDS
+
+Resources:
+  
+  # ECS Cluster
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: OpenProjectCluster
+    DeletionPolicy: Delete
+    
+  SecurityGroupProjetoWeb:
+    Type: AWS::EC2::SecurityGroup
+    DeletionPolicy: Delete
+    Properties: 
+      GroupDescription: "Allow web inbound traffic"
+      VpcId: !ImportValue OpenProjectVPC
+      SecurityGroupIngress: 
+        - Description: "HTTP"
+          IpProtocol: "tcp"
+          FromPort: 80
+          ToPort: 80
+          CidrIp: "0.0.0.0/0"
+        - Description: "TESTE"
+          IpProtocol: "tcp"
+          FromPort: 8080
+          ToPort: 8080
+          CidrIp: "0.0.0.0/0"
+        - Description: "HTTP (IPv6)"
+          IpProtocol: "tcp"
+          FromPort: 80
+          ToPort: 80
+          CidrIpv6: "::/0"
+      SecurityGroupEgress:
+        - IpProtocol: "-1"
+          FromPort: 0
+          ToPort: 0
+          CidrIp: "0.0.0.0/0"
+        - IpProtocol: "-1"
+          FromPort: 0
+          ToPort: 0
+          CidrIpv6: "::/0"
+      Tags:
+        - Key: Name
+          Value: "SG-WEB"
+
+
+  # ALB Security Group  ##################################
+  ALBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    DeletionPolicy: Delete
+    Properties: 
+      GroupDescription: Security group for the ALB
+      VpcId: !ImportValue OpenProjectVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: "SG-ALB"
+  
+  # Application Load Balancer
+  ApplicationLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    DeletionPolicy: Delete
+    Properties:
+      Name: OpenProjectALB
+      Subnets:
+        - !ImportValue PublicSubnet01ID 
+        - !ImportValue PublicSubnet02ID  # Updated to public01 and public02
+      SecurityGroups: 
+        - !Ref ALBSecurityGroup
+      Scheme: internet-facing
+      LoadBalancerAttributes:
+        - Key: idle_timeout.timeout_seconds
+          Value: '300' #valor default 60 
+      Type: application
+    
+  # ALB Listener
+  ALBListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    DeletionPolicy: Delete
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref ALBTargetGroup
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Port: 80
+      Protocol: HTTP
+
+  # ALB Target Group
+  ALBTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    DeletionPolicy: Delete
+    Properties:
+      HealthCheckProtocol: HTTP
+      HealthCheckPath: /
+      HealthCheckIntervalSeconds: 120 #default 30 
+      HealthCheckTimeoutSeconds: 60 #default 15
+      HealthyThresholdCount: 6 # default 3 
+      UnhealthyThresholdCount: 4 #default 2 
+      Matcher:
+        HttpCode: '302' #default 200 
+      Port: 80
+      Protocol: HTTP
+      VpcId: !ImportValue OpenProjectVPC
+      TargetType: ip
+      TargetGroupAttributes:
+        - Key: "stickiness.enabled"
+          Value: "true"
+        - Key: "stickiness.type"
+          Value: "lb_cookie"
+        - Key: "stickiness.lb_cookie.duration_seconds"
+          Value: "86400"  # Exemplo: 1 dia
+
+  # ECS Task Role
+  ECSTaskExecutionRole:
+    Type: AWS::IAM::Role
+    DeletionPolicy: Delete
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: ECSFargateTaskExecutionRole
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ecr:GetAuthorizationToken
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:BatchGetImage
+                  - ecr:BatchCheckLayerAvailability
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - logs:CreateLogGroup
+                Resource: "*"
+
+  # ECS Task Definition for OpenProject
+  ECSTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    DeletionPolicy: Delete
+    Properties:
+      Family: OpenProjectTaskDefinition
+      Cpu: '2048'
+      Memory: '4096'
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      ExecutionRoleArn: !Ref ECSTaskExecutionRole
+      ContainerDefinitions:
+        - Name: openproject
+          Image: 644318476678.dkr.ecr.us-east-2.amazonaws.com/openproject:13
+          Essential: true
+          PortMappings:
+            - ContainerPort: 8080 #mostrado no video
+              Protocol: tcp
+          Environment:
+            - Name: OPENPROJECT_HTTPS
+              Value: 'false'
+            - Name: OPENPROJECT_SECRET_KEY_BASE
+              Value: 'secret'
+            - Name: OPENPROJECT_HOST__NAME
+              Value: 'openproject.fintech.net.br'
+            - Name: OPENPROJECT_CACHE__MEMCACHE__SERVER
+#              Value: 'xxxxxx:11211'
+              Value: 'memcached-projeto11.dtth0x.0001.use2.cache.amazonaws.com:11211'
+            - Name: DATABASE_URL
+              Value: 'postgresql://postgresadmin:Projeto112023@projeto11.c7e8sow0apqk.us-east-2.rds.amazonaws.com:5432/openproject'
+#             Value: '"postgresql://postgresadmin:Projeto112023@xxxxx:5432/openproject'
+            - Name: OPENPROJECT_ATTACHMENTS__STORAGE
+#              Value: 'fog'
+            - Name: OPENPROJECT_FOG_CREDENTIALS_AWS__ACCESS__KEY__ID
+#              Value: '' 
+            - Name: OPENPROJECT_FOG_CREDENTIALS_AWS__SECRET__ACCESS__KEY
+#              Value: ''
+            - Name: OPENPROJECT_FOG_CREDENTIALS_PROVIDER
+#              Value: 'AWS'
+#            - Name: OPENPROJECT_FOG_CREDENTIALS_REGION
+#              Value: ''
+#            - Name: OPENPROJECT_FOG_DIRECTORY
+#              Value: ''
+            - Name: RAILS_ENV
+              Value: 'production'
+#            - Name: 
+#              Value: ''
+#            - Name:
+#              Value: ''  
+              
+          LogConfiguration: 
+            LogDriver: awslogs
+            Options:
+              awslogs-group: /ecs/openproject
+              awslogs-region: us-east-2
+              awslogs-stream-prefix: ecs
+
+  # ECS Service
+  ECSService:
+    Type: AWS::ECS::Service
+    DeletionPolicy: Delete
+    DependsOn: 
+      - ApplicationLoadBalancer
+#      - ALBListener
+    Properties:
+      Cluster: !Ref ECSCluster
+      DesiredCount: 1
+      LaunchType: FARGATE
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: DISABLED  # No public IP as it's in private subnets
+          Subnets:
+            - !ImportValue PrivateSubnet01ID
+            - !ImportValue PrivateSubnet02ID # Updated to private01 and private02
+          SecurityGroups: 
+            - !Ref ALBSecurityGroup
+      TaskDefinition: !Ref ECSTaskDefinition
+      LoadBalancers:
+        - ContainerName: openproject
+          ContainerPort: 8080
+          TargetGroupArn: !Ref ALBTargetGroup

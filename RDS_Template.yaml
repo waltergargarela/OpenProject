@@ -1,0 +1,124 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Stack para criação do RDS PostgreSQL com SG e Subnet Group'
+
+Parameters:
+
+  VPCStackName:
+    Description: Name of VPC CF Stack
+    Type: String
+    Default: OPENPROJECT-VPC
+
+  TagBase:
+    Type: String
+    Default: "projeto11"
+    Description: "Tag base para identificação dos recursos"
+
+  RDSIdentificador:
+    Type: String
+    Default: "projeto11"
+    Description: "Identificador da instância RDS"
+
+  RDSNomeBanco:
+    Type: String
+    Default: "openproject"
+    Description: "Nome inicial do banco de dados"
+
+  RDSNomeUsuario:
+    Type: String
+    Default: "postgresadmin"
+    Description: "Nome do usuário administrador do RDS"
+
+  RDSSenhaUsuario:
+    Type: String
+    NoEcho: true
+    Default: "Projeto112023"
+    Description: "Senha do usuário administrador do RDS"
+
+  RDSTipoInstancia:
+    Type: String
+    Default: "db.t3.micro"
+    Description: "Tipo de instância do RDS"
+
+  DBPort:
+    Type: Number
+    Default: 5432
+    Description: "Porta do banco de dados"
+
+Resources:
+
+  RDSSecurityGroup:
+    Type: "AWS::EC2::SecurityGroup"
+    DeletionPolicy: Delete
+    Properties:
+      GroupDescription: "Allow inbound and outbound traffic for RDS"
+      VpcId: !ImportValue OpenProjectVPC
+      SecurityGroupIngress:
+        - Description: !Ref RDSNomeBanco
+          IpProtocol: tcp
+          FromPort: !Ref DBPort
+          ToPort: !Ref DBPort
+          CidrIp: "0.0.0.0/0"
+        - Description: !Ref RDSNomeBanco
+          IpProtocol: tcp
+          FromPort: !Ref DBPort
+          ToPort: !Ref DBPort
+          CidrIpv6: "::/0"
+      SecurityGroupEgress:
+        - IpProtocol: "-1"
+          FromPort: 0
+          ToPort: 0
+          CidrIp: "0.0.0.0/0"
+        - IpProtocol: "-1"
+          FromPort: 0
+          ToPort: 0
+          CidrIpv6: "::/0"
+      Tags:
+        - Key: Name
+          Value: !Sub "sg-${TagBase}-db"
+
+  RDSSubnetGroup:
+    Type: "AWS::RDS::DBSubnetGroup"
+    Properties: 
+      DBSubnetGroupDescription: !Sub "${TagBase}-sn-db-group"
+      SubnetIds: 
+        - !ImportValue PrivateSubnet01ID
+        - !ImportValue PrivateSubnet02ID
+        - !ImportValue PublicSubnet01ID
+        - !ImportValue PublicSubnet02ID
+      Tags:
+        - Key: Name
+          Value: !Sub "${TagBase}-sn-db-group"
+
+  RDSInstance:
+    Type: "AWS::RDS::DBInstance"
+    DeletionPolicy: Delete
+    Properties:
+      DBInstanceIdentifier: !Ref RDSIdentificador
+      AllocatedStorage: 10
+      DBInstanceClass: !Ref RDSTipoInstancia
+      Engine: "postgres"
+      EngineVersion: "13.13"
+      MasterUsername: !Ref RDSNomeUsuario
+      MasterUserPassword: !Ref RDSSenhaUsuario
+      DBName: !Ref RDSNomeBanco
+      VPCSecurityGroups:
+        - !Ref RDSSecurityGroup
+      DBSubnetGroupName: !Ref RDSSubnetGroup
+      PubliclyAccessible: false
+      StorageType: "gp2"
+      MultiAZ: false
+      BackupRetentionPeriod: 7
+      Tags:
+        - Key: Name
+          Value: !Sub "${TagBase}-rds"
+      DeletionProtection: false
+
+
+Outputs:
+  RDSInstanceIdentifier:
+    Description: "Identificador da instância RDS"
+    Value: !Ref RDSInstance
+
+  SecurityGroupID:
+    Description: "ID do Security Group criado para o RDS"
+    Value: !Ref RDSSecurityGroup

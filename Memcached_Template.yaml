@@ -1,0 +1,69 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Parameters:
+
+  VPCStackName:
+    Description: Name of VPC CF Stack
+    Type: String
+    Default: OPENPROJECT-VPC
+
+  TagBase:
+    Type: String
+    Default: "projeto11" 
+
+
+Resources:
+      
+  CacheSecurityGroup:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupDescription: "Allow web ELB - Memcached"
+      VpcId: !ImportValue OpenProjectVPC
+      SecurityGroupIngress:
+        - Description: "Allow MEMCACHED"
+          IpProtocol: "tcp"
+          FromPort: 11211
+          ToPort: 11211
+          CidrIp: "0.0.0.0/0"
+        - Description: "Allow MEMCACHED (IPv6)"
+          IpProtocol: "tcp"
+          FromPort: 11211
+          ToPort: 11211
+          CidrIpv6: "::/0"
+      SecurityGroupEgress:
+        - IpProtocol: "-1"
+          FromPort: 0
+          ToPort: 0
+          CidrIp: "0.0.0.0/0"
+        - IpProtocol: "-1"
+          FromPort: 0
+          ToPort: 0
+          CidrIpv6: "::/0"
+      Tags:
+        - Key: Name
+          Value: "SG-Memcached"
+
+  ElastiCacheSubnetGroup:
+    Type: "AWS::ElastiCache::SubnetGroup"
+    Properties: 
+      Description: "Elasticache Subnet Group"
+      SubnetIds: 
+        - !ImportValue PublicSubnet01ID 
+        - !ImportValue PublicSubnet02ID
+        - !ImportValue PrivateSubnet01ID
+        - !ImportValue PrivateSubnet02ID        
+
+  MemcachedCluster:
+    Type: "AWS::ElastiCache::CacheCluster"
+    Properties:
+      CacheNodeType: "cache.t3.micro"
+      Engine: "memcached"
+      EngineVersion: "1.5.16"
+      NumCacheNodes: 1
+      Port: 11211
+      ClusterName: !Sub "memcached-${TagBase}"
+      CacheSubnetGroupName: !Ref ElastiCacheSubnetGroup
+      VpcSecurityGroupIds:
+        - !Ref CacheSecurityGroup
+      CacheParameterGroupName: "default.memcached1.5"
+
