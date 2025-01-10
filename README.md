@@ -172,14 +172,11 @@ formatação em ambos os casos.
 
 Nosso exemplo de código não cria uma regra de lista de controle de acesso e usa 
 um NAT Gateway (Opcional), mas é funcional para este exemplo. 
-O código todo estará incluso neste repositório: VPC_CF_Template.yaml
-
-
----
-# [VPC_CF_Template.yaml](https://gitlab.dss.inpe.br/walter/IAC/-/blob/master/VPC_CF_Template.yaml).
+O código todo estará incluso neste repositório: [VPC_CF_Template.yaml](VPC_CF_Template.yaml)
 
 ---
 
+<br>
 
 ## Descrevendo o código
 
@@ -187,15 +184,16 @@ Nosso código de exemplo não cria regras de lista de controle de acesso (ACL) e
 usa um NAT Gateway (Opcional), mas é funcional para este exemplo, permitindo que
 instâncias (VMs) instaladas em rede privada possam acessar a internet. 
 
-Para explicar um pouco melhor a estrutura do código, separei em 3 partes. 
+> Separei em 3 partes para explicar um pouco melhor a estrutura do código. 
+>
+> - 1a parte - Versão do template e parâmetros / variáveis. 
+> - 2a parte - Declaração dos recursos. 
+> - 3a parte - Declaração das saídas/outputs. 
+ 
 
-1a parte - Versão do template e parâmetros / variáveis. 
-2a parte - Declaração dos recursos. 
-3a parte - Declaração das saídas/outputs. 
+</br></br></br>
 
----
-
-Na primeira parte do código precisamos declarar a versão do template e uma 
+Na __primeira parte__  do código precisamos declarar a versão do template e uma 
 descrição (opcional). 
 
 Em seguida declaramos os principais parâmetros, que podemos entender como 
@@ -232,8 +230,8 @@ Parameters:
     Default: "10.0.4.0/24"
     Description: CIDR Block da segunda subnet privada
 ```
-
-Na segunda parte do código já entramos com a declaração para a criação ou provisionamento 
+</br> </br> </br> 
+Na __segunda parte__ do código já entramos com a declaração para a criação ou provisionamento 
 dos recursos, ou seja, criação de recursos de rede, rotas e etc. 
 
 Reparem que sempre entramos com uma nomenclatura do recurso, em alguns casos 
@@ -391,8 +389,8 @@ Resources:
 
 ```
 
-
-Na terceira parte declaramos as saídas (Outputs), estas saídas servem para 
+</br> </br> </br> 
+Na __terceira parte__ declaramos as saídas (Outputs), estas saídas servem para 
 declararmos os nomes dos principais recursos criados e que precisaremos usar 
 como entradas/variáveis para outras “stacks”. 
 
